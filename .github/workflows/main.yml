@@ -1,4 +1,4 @@
-name: Build SMS Backup Debug
+name: Build Safe SMS Backup
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
 
       - name: Create project structure
         run: |
-          mkdir -p app/src/main/java/com/debug/smsbackup
+          mkdir -p app/src/main/java/com/safe/smsbackup
           mkdir -p app/src/main/res/values
 
       - name: Write AndroidManifest.xml
@@ -27,10 +27,10 @@ jobs:
           cat > app/src/main/AndroidManifest.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-              package="com.debug.smsbackup">
+              package="com.safe.smsbackup">
               <uses-permission android:name="android.permission.READ_SMS" />
               <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-              <application android:allowBackup="true" android:label="SMS Backup Debug"
+              <application android:allowBackup="true" android:label="SMS Backup"
                   android:theme="@android:style/Theme.DeviceDefault.Light">
                   <activity android:name=".MainActivity" android:exported="true">
                       <intent-filter>
@@ -42,10 +42,10 @@ jobs:
           </manifest>
           EOF
 
-      - name: Write MainActivity.java with logging
+      - name: Write MainActivity.java (safe version)
         run: |
-          cat > app/src/main/java/com/debug/smsbackup/MainActivity.java << 'EOF'
-          package com.debug.smsbackup;
+          cat > app/src/main/java/com/safe/smsbackup/MainActivity.java << 'EOF'
+          package com.safe.smsbackup;
           import android.app.Activity;
           import android.os.Bundle;
           import android.os.Environment;
@@ -57,17 +57,16 @@ jobs:
           import android.Manifest;
           import android.content.pm.PackageManager;
           import android.widget.Toast;
+          import androidx.core.app.ActivityCompat;
+          import androidx.core.content.ContextCompat;
           import java.io.File;
           import java.io.FileWriter;
-          import java.io.PrintWriter;
-          import java.io.StringWriter;
           import java.text.SimpleDateFormat;
           import java.util.Date;
           import java.util.Locale;
           public class MainActivity extends Activity {
+              private static final int PERMISSION_REQUEST_CODE = 100;
               private TextView statusText;
-              private Button backupButton;
-              private File logFile;
               @Override
               protected void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
@@ -75,87 +74,47 @@ jobs:
                   layout.setOrientation(LinearLayout.VERTICAL);
                   layout.setPadding(50,50,50,50);
                   statusText = new TextView(this);
-                  statusText.setText("Tekan tombol Backup setelah izin diberikan");
-                  backupButton = new Button(this);
+                  statusText.setText("Tekan tombol untuk backup SMS");
+                  Button backupButton = new Button(this);
                   backupButton.setText("Backup SMS ke XML");
                   backupButton.setOnClickListener(v -> {
-                      if (checkSelfPermission(Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED ||
-                          checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                          requestPermissions(new String[]{Manifest.permission.READ_SMS, Manifest.permission.WRITE_EXTERNAL_STORAGE}, 1);
+                      // Cek izin setiap kali tombol ditekan
+                      if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED ||
+                          ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                          // Minta izin
+                          ActivityCompat.requestPermissions(this,
+                              new String[]{Manifest.permission.READ_SMS, Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                              PERMISSION_REQUEST_CODE);
                       } else {
+                          // Izin sudah ada, langsung backup
                           doBackup();
                       }
                   });
                   layout.addView(statusText);
                   layout.addView(backupButton);
                   setContentView(layout);
-                  // Inisialisasi log file
-                  try {
-                      File dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-                      if (!dir.exists()) dir.mkdirs();
-                      logFile = new File(dir, "sms_backup_debug_log.txt");
-                      writeLog("Aplikasi dimulai");
-                  } catch (Exception e) {
-                      // tidak apa jika gagal, kita tetap lanjut
-                  }
-              }
-              private void writeLog(String msg) {
-                  try {
-                      if (logFile == null) return;
-                      FileWriter fw = new FileWriter(logFile, true);
-                      fw.write(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(new Date()) + " - " + msg + "\n");
-                      fw.close();
-                  } catch (Exception e) {}
-              }
-              private void writeException(Exception e) {
-                  try {
-                      StringWriter sw = new StringWriter();
-                      PrintWriter pw = new PrintWriter(sw);
-                      e.printStackTrace(pw);
-                      writeLog("EXCEPTION: " + sw.toString());
-                  } catch (Exception ex) {}
               }
               @Override
               public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-                  if (requestCode == 1) {
+                  if (requestCode == PERMISSION_REQUEST_CODE) {
                       if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                          writeLog("Izin diberikan");
+                          Toast.makeText(this, "Izin diberikan, mulai backup", Toast.LENGTH_SHORT).show();
                           doBackup();
                       } else {
-                          writeLog("Izin ditolak");
+                          Toast.makeText(this, "Izin diperlukan untuk backup SMS", Toast.LENGTH_LONG).show();
                           statusText.setText("Izin ditolak");
                       }
                   }
               }
               private void doBackup() {
-                  writeLog("Mulai backup");
                   try {
-                      statusText.setText("Memulai backup...");
-                      writeLog("Mencoba membaca inbox");
-                      Uri inboxUri = Uri.parse("content://sms/inbox");
-                      Cursor cursor = null;
-                      try {
-                          cursor = getContentResolver().query(inboxUri, null, null, null, "date ASC");
-                          writeLog("Query inbox berhasil, cursor=" + (cursor != null ? "not null" : "null"));
-                          if (cursor == null) {
-                              writeLog("Cursor inbox null, mungkin tidak ada izin?");
-                              statusText.setText("Gagal: cursor inbox null");
-                              return;
-                          }
-                          writeLog("Jumlah SMS inbox: " + cursor.getCount());
-                          cursor.close();
-                      } catch (Exception e) {
-                          writeLog("Error query inbox: " + e.toString());
-                          writeException(e);
-                          statusText.setText("Error: " + e.getMessage());
-                          return;
-                      }
-                      // Jika berhasil sampai sini, lakukan backup penuh
+                      statusText.setText("Memproses...");
                       StringBuilder sb = new StringBuilder();
                       sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
                       sb.append("<smses>\n");
                       // Inbox
-                      cursor = getContentResolver().query(inboxUri, null, null, null, "date ASC");
+                      Uri inboxUri = Uri.parse("content://sms/inbox");
+                      Cursor cursor = getContentResolver().query(inboxUri, null, null, null, "date ASC");
                       if (cursor != null) {
                           int addrIdx = cursor.getColumnIndex("address");
                           int bodyIdx = cursor.getColumnIndex("body");
@@ -190,17 +149,17 @@ jobs:
                       sb.append("</smses>");
                       String filename = "sms_backup_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date()) + ".xml";
                       File dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                      if (!dir.exists()) dir.mkdirs();
                       File file = new File(dir, filename);
                       FileWriter fw = new FileWriter(file);
                       fw.write(sb.toString());
                       fw.close();
-                      writeLog("Backup berhasil disimpan ke " + filename);
-                      statusText.setText("Backup berhasil: " + filename);
-                      Toast.makeText(this, "Berhasil! File di Downloads", Toast.LENGTH_LONG).show();
+                      statusText.setText("Berhasil: " + filename);
+                      Toast.makeText(this, "Backup berhasil di folder Downloads", Toast.LENGTH_LONG).show();
                   } catch (Exception e) {
-                      writeLog("Exception di doBackup: " + e.toString());
-                      writeException(e);
                       statusText.setText("Error: " + e.getMessage());
+                      Toast.makeText(this, "Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                      e.printStackTrace();
                   }
               }
               private String escapeXml(String s) {
@@ -215,7 +174,7 @@ jobs:
           cat > app/src/main/res/values/strings.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <resources>
-              <string name="app_name">SMS Backup Debug</string>
+              <string name="app_name">SMS Backup</string>
           </resources>
           EOF
 
@@ -246,10 +205,10 @@ jobs:
           cat > app/build.gradle << 'EOF'
           plugins { id 'com.android.application' }
           android {
-              namespace 'com.debug.smsbackup'
+              namespace 'com.safe.smsbackup'
               compileSdk 33
               defaultConfig {
-                  applicationId "com.debug.smsbackup"
+                  applicationId "com.safe.smsbackup"
                   minSdk 21
                   targetSdk 22
                   versionCode 1
@@ -268,5 +227,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: sms-backup-debug
+          name: sms-backup-safe
           path: app/build/outputs/apk/debug/*.apk
