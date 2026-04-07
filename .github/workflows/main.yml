@@ -42,7 +42,7 @@ jobs:
           </manifest>
           EOF
 
-      - name: Write MainActivity.java (safe version)
+      - name: Write MainActivity.java (safe version with proper imports)
         run: |
           cat > app/src/main/java/com/safe/smsbackup/MainActivity.java << 'EOF'
           package com.safe.smsbackup;
@@ -78,15 +78,12 @@ jobs:
                   Button backupButton = new Button(this);
                   backupButton.setText("Backup SMS ke XML");
                   backupButton.setOnClickListener(v -> {
-                      // Cek izin setiap kali tombol ditekan
                       if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED ||
                           ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                          // Minta izin
                           ActivityCompat.requestPermissions(this,
                               new String[]{Manifest.permission.READ_SMS, Manifest.permission.WRITE_EXTERNAL_STORAGE},
                               PERMISSION_REQUEST_CODE);
                       } else {
-                          // Izin sudah ada, langsung backup
                           doBackup();
                       }
                   });
@@ -200,7 +197,7 @@ jobs:
           android.useAndroidX=true
           EOF
 
-      - name: Write app/build.gradle
+      - name: Write app/build.gradle (dengan dependency androidx)
         run: |
           cat > app/build.gradle << 'EOF'
           plugins { id 'com.android.application' }
@@ -215,6 +212,9 @@ jobs:
                   versionName "1.0"
               }
               buildTypes { debug { debuggable true } }
+          }
+          dependencies {
+              implementation 'androidx.appcompat:appcompat:1.6.1'
           }
           EOF
 
